@@ -12,11 +12,11 @@ links = "tesseract"
 build = "build.rs"
 
 [dependencies]
-leptonica-sys = "~0.4"
+leptonica-sys = { path = "../leptonica-sys" }
 
 [build-dependencies]
 bindgen = "0.64"
+cmake = "0.1"
+
 [target.'cfg(windows)'.build-dependencies]
 vcpkg = "0.2.8"
-[target.'cfg(any(target_os="macos", target_os="linux", target_os="freebsd"))'.build-dependencies]
-pkg-config = "0.3.19"

@@ -1,88 +1,11 @@
 extern crate bindgen;
+extern crate cmake;
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 #[cfg(windows)]
 use vcpkg;
-
-#[cfg(windows)]
-fn find_tesseract_system_lib() -> Vec<String> {
-    println!("cargo:rerun-if-env-changed=TESSERACT_INCLUDE_PATHS");
-    println!("cargo:rerun-if-env-changed=TESSERACT_LINK_PATHS");
-    println!("cargo:rerun-if-env-changed=TESSERACT_LINK_LIBS");
-
-    let vcpkg = || {
-        let lib = vcpkg::Config::new().find_package("tesseract").unwrap();
-
-        vec![lib
-            .include_paths
-            .iter()
-            .map(|x| x.to_string_lossy())
-            .collect::<String>()]
-    };
-
-    let include_paths = env::var("TESSERACT_INCLUDE_PATHS").ok();
-    let include_paths = include_paths.as_deref().map(|x| x.split(','));
-    let link_paths = env::var("TESSERACT_LINK_PATHS").ok();
-    let link_paths = link_paths.as_deref().map(|x| x.split(','));
-    let link_libs = env::var("TESSERACT_LINK_LIBS").ok();
-    let link_libs = link_libs.as_deref().map(|x| x.split(','));
-    if let (Some(include_paths), Some(link_paths), Some(link_libs)) =
-        (include_paths, link_paths, link_libs)
-    {
-        for link_path in link_paths {
-            println!("cargo:rustc-link-search={}", link_path)
-        }
-
-        for link_lib in link_libs {
-            println!("cargo:rustc-link-lib={}", link_lib)
-        }
-
-        include_paths.map(|x| x.to_string()).collect::<Vec<_>>()
-    } else {
-        vcpkg()
-    }
-}
-
-// we sometimes need additional search paths, which we get using pkg-config
-// we can use tesseract installed anywhere on Linux.
-// if you change install path(--prefix) to `configure` script.
-// set `export PKG_CONFIG_PATH=/path-to-lib/pkgconfig` before.
-#[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
-fn find_tesseract_system_lib() -> Vec<String> {
-    let pk = pkg_config::Config::new()
-        .atleast_version("4.1")
-        .probe("tesseract")
-        .unwrap();
-    // Tell cargo to tell rustc to link the system proj shared library.
-    println!("cargo:rustc-link-search=native={:?}", pk.link_paths[0]);
-    println!("cargo:rustc-link-lib=tesseract");
-
-    let mut include_paths = pk.include_paths.clone();
-    include_paths
-        .iter_mut()
-        .map(|x| {
-            if !x.ends_with("include") {
-                x.pop();
-            }
-            x
-        })
-        .map(|x| x.to_string_lossy())
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>()
-}
-
-#[cfg(all(
-    not(windows),
-    not(target_os = "macos"),
-    not(target_os = "linux"),
-    not(target_os = "freebsd")
-))]
-fn find_tesseract_system_lib() -> Vec<String> {
-    println!("cargo:rustc-link-lib=tesseract");
-    vec![]
-}
 
 fn capi_bindings(clang_extra_include: &[String]) -> bindgen::Bindings {
     let mut capi_bindings = bindgen::Builder::default()
@@ -147,9 +70,41 @@ fn main() {
     #[cfg(target_os = "windows")]
     println!("cargo:rustc-link-lib=Advapi32");
 
-    // Tell cargo to tell rustc to link the system tesseract
-    // and leptonica shared libraries.
-    let clang_extra_include = find_tesseract_system_lib();
+    let leptonica_lib = env::var("DEP_LEPT_LIB").expect("leptonica-sys should provide lib path");
+
+    let out_dir = env::var("OUT_DIR").unwrap();
+    let target = env::var("TARGET").unwrap();
+
+    let build_dir = format!("{}/tesseract-build-{}", out_dir, target);
+    let _dst = cmake::Config::new("tesseract")
+        .define("BUILD_TRAINING_TOOLS", "OFF")
+        .define("BUILD_TESTS", "OFF")
+        .define("BUILD_SHARED_LIBS", "OFF")
+        .define("DISABLE_TIFF", "ON")
+        .define("DISABLE_ARCHIVE", "ON")
+        .define("DISABLE_CURL", "ON")
+        .define("GRAPHICS_DISABLED", "ON")
+        .define("CMAKE_INSTALL_CONFIG", "OFF")
+        .define("CMAKE_PREFIX_PATH", &leptonica_lib)
+        .define("Leptonica_DIR", &leptonica_lib)
+        .out_dir(&build_dir)
+        .always_configure(true)
+        .build_target("libtesseract")
+        .build();
+
+    // The library is built in the cmake build directory, not installed
+    let lib_path = format!("{}/build", build_dir);
+    println!("cargo:rustc-link-search=native={}", lib_path);
+    println!("cargo:rustc-link-lib=static=tesseract");
+
+    println!("cargo:rustc-link-lib=stdc++");
+
+    // Set up include paths for bindgen - use source headers since we're not installing
+    let include_path = format!(
+        "{}/include",
+        env::current_dir().unwrap().join("tesseract").display()
+    );
+    let clang_extra_include = vec![include_path];
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
