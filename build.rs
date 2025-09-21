@@ -85,6 +85,10 @@ fn main() {
         .define("DISABLE_CURL", "ON")
         .define("GRAPHICS_DISABLED", "ON")
         .define("CMAKE_INSTALL_CONFIG", "OFF")
+        // Tesseract requires C++17
+        .define("CMAKE_CXX_STANDARD", "17")
+        .define("CMAKE_CXX_STANDARD_REQUIRED", "ON")
+        .define("CMAKE_CXX_EXTENSIONS", "OFF")
         .define("CMAKE_PREFIX_PATH", &leptonica_lib)
         .define("Leptonica_DIR", &leptonica_lib)
         .out_dir(&build_dir)
