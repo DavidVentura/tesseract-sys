@@ -1,4 +1,6 @@
 extern crate bindgen;
+extern crate cc;
+extern crate cmake;
 
 use std::env;
 use std::fs;
@@ -156,6 +158,12 @@ fn main() {
     capi_bindings(&clang_extra_include)
         .write_to_file(out_path.join("capi_bindings.rs"))
         .expect("Couldn't write capi bindings!");
+
+    cc::Build::new()
+        .cpp(true)
+        .file("custom_capi.cpp")
+        .compile("custom_capi");
+
     fs::write(
         out_path.join("public_types_bindings.rs"),
         public_types_bindings(&clang_extra_include),
