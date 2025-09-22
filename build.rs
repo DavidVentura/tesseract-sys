@@ -1,5 +1,6 @@
 extern crate bindgen;
 extern crate cmake;
+extern crate cc;
 
 use std::env;
 use std::fs;
@@ -108,6 +109,14 @@ fn main() {
         "{}/include",
         env::current_dir().unwrap().join("tesseract").display()
     );
+
+    // Compile our custom C API extensions
+    cc::Build::new()
+        .cpp(true)
+        .include(&include_path)
+        .include("tesseract/include")
+        .file("custom_capi.cpp")
+        .compile("custom_capi");
     let clang_extra_include = vec![include_path];
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
