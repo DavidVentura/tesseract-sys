@@ -18,6 +18,3 @@ leptonica-sys = { path = "../leptonica-sys" }
 bindgen = "0.64"
 cmake = "0.1"
 cc = "1.0"
-
-[target.'cfg(windows)'.build-dependencies]
-vcpkg = "0.2.8"

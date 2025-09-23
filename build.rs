@@ -1,12 +1,10 @@
 extern crate bindgen;
-extern crate cmake;
 extern crate cc;
+extern crate cmake;
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-#[cfg(windows)]
-use vcpkg;
 
 fn capi_bindings(clang_extra_include: &[String]) -> bindgen::Bindings {
     let mut capi_bindings = bindgen::Builder::default()
@@ -55,22 +53,7 @@ fn public_types_bindings(clang_extra_include: &[String]) -> String {
         .replace("tesseract_", "")
 }
 
-// MacOS clang is incompatible with Bindgen and constexpr
-// https://github.com/rust-lang/rust-bindgen/issues/1948
-// Hardcode the constants rather than reading them dynamically
-#[cfg(target_os = "macos")]
-fn public_types_bindings(_clang_extra_include: &[String]) -> &'static str {
-    include_str!("src/public_types_bindings_mac.rs")
-}
-
 fn main() {
-    #[cfg(target_os = "windows")]
-    println!("cargo:rustc-link-lib=User32");
-    #[cfg(target_os = "windows")]
-    println!("cargo:rustc-link-lib=Crypt32");
-    #[cfg(target_os = "windows")]
-    println!("cargo:rustc-link-lib=Advapi32");
-
     let leptonica_lib = env::var("DEP_LEPT_LIB").expect("leptonica-sys should provide lib path");
 
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -78,6 +61,7 @@ fn main() {
 
     let build_dir = format!("{}/tesseract-build-{}", out_dir, target);
     let _dst = cmake::Config::new("tesseract")
+        // disable everything
         .define("BUILD_TRAINING_TOOLS", "OFF")
         .define("BUILD_TESTS", "OFF")
         .define("BUILD_SHARED_LIBS", "OFF")
@@ -85,13 +69,20 @@ fn main() {
         .define("DISABLE_ARCHIVE", "ON")
         .define("DISABLE_CURL", "ON")
         .define("GRAPHICS_DISABLED", "ON")
-        .define("CMAKE_INSTALL_CONFIG", "OFF")
+        .define("INSTALL_CONFIGS", "OFF")
+        // perf opt
+        .define("ENABLE_UNITY_BUILD", "ON")
+        .define("FAST_FLOAT", "ON")
         // Tesseract requires C++17
         .define("CMAKE_CXX_STANDARD", "17")
         .define("CMAKE_CXX_STANDARD_REQUIRED", "ON")
         .define("CMAKE_CXX_EXTENSIONS", "OFF")
+        // deps
         .define("CMAKE_PREFIX_PATH", &leptonica_lib)
-        .define("Leptonica_DIR", &leptonica_lib)
+        .define(
+            "Leptonica_DIR",
+            &format!("{}/cmake/leptonica", leptonica_lib),
+        )
         .out_dir(&build_dir)
         .always_configure(true)
         .build_target("libtesseract")
@@ -111,13 +102,15 @@ fn main() {
     );
 
     // Compile our custom C API extensions
+    let generated_include_path = format!("{}/build/include", build_dir);
     cc::Build::new()
         .cpp(true)
         .include(&include_path)
+        .include(&generated_include_path)
         .include("tesseract/include")
         .file("custom_capi.cpp")
         .compile("custom_capi");
-    let clang_extra_include = vec![include_path];
+    let clang_extra_include = vec![include_path, generated_include_path];
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
