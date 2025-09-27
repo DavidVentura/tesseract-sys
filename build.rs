@@ -77,6 +77,10 @@ fn main() {
         .define("CMAKE_CXX_STANDARD", "17")
         .define("CMAKE_CXX_STANDARD_REQUIRED", "ON")
         .define("CMAKE_CXX_EXTENSIONS", "OFF")
+        // reproducible builds
+        .cflag("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.")
+        .cflag("-ffile-prefix-map=/usr/local/cargo/=.")
+        .cflag("-ffile-prefix-map=/home/vagrant/.cargo/=.")
         // deps
         .define("CMAKE_PREFIX_PATH", &leptonica_lib)
         .define(
