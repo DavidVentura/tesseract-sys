@@ -60,7 +60,22 @@ fn main() {
     let target = env::var("TARGET").unwrap();
 
     let build_dir = format!("{}/tesseract-build-{}", out_dir, target);
-    let _dst = cmake::Config::new("tesseract")
+    let mut config = cmake::Config::new("tesseract");
+    for var in [
+        "CMAKE_TOOLCHAIN_FILE",
+        "CMAKE_SYSTEM_NAME",
+        "CMAKE_SYSTEM_PROCESSOR",
+        "CMAKE_C_COMPILER",
+        "CMAKE_CXX_COMPILER",
+        "ANDROID_ABI",
+        "ANDROID_PLATFORM",
+    ] {
+        println!("cargo:rerun-if-env-changed={var}");
+        if let Ok(value) = env::var(var) {
+            config.define(var, &value);
+        }
+    }
+    let _dst = config
         // disable everything
         .define("BUILD_TRAINING_TOOLS", "OFF")
         .define("BUILD_TESTS", "OFF")
@@ -68,19 +83,23 @@ fn main() {
         .define("DISABLE_TIFF", "ON")
         .define("DISABLE_ARCHIVE", "ON")
         .define("DISABLE_CURL", "ON")
+        .define("DISABLED_LEGACY_ENGINE", "ON")
         .define("GRAPHICS_DISABLED", "ON")
         .define("INSTALL_CONFIGS", "OFF")
         // perf opt
-        .define("ENABLE_UNITY_BUILD", "ON")
+        .define("ENABLE_LTO", "ON")
+        .define("ENABLE_UNITY_BUILD", "OFF")
         .define("FAST_FLOAT", "ON")
         // Tesseract requires C++17
         .define("CMAKE_CXX_STANDARD", "17")
         .define("CMAKE_CXX_STANDARD_REQUIRED", "ON")
         .define("CMAKE_CXX_EXTENSIONS", "OFF")
+        .cflag("-ffunction-sections")
+        .cflag("-fdata-sections")
+        .cxxflag("-ffunction-sections")
+        .cxxflag("-fdata-sections")
         // reproducible builds
         .cflag("-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.")
-        .cflag("-ffile-prefix-map=/usr/local/cargo/=.")
-        .cflag("-ffile-prefix-map=/home/vagrant/.cargo/=.")
         // deps
         .define("CMAKE_PREFIX_PATH", &leptonica_lib)
         .define(
